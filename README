@@ -1,0 +1,97 @@
+# 1. Double7 Strategy
+
+This strategy trades the S&P 500 index (^GSPC) and uses several variants. The core idea is to buy after a 7‑day low (a pullback) when the overall trend is up (price above its 200‑day moving average). Exits depend on the chosen variant.
+
+### Common Elements for All Variants (except Buy‑and‑Hold)
+- **Data used**: daily Open, High, Low, Close.
+- **Indicators**:
+  - 7‑day low: today’s close equals the lowest close of the last 7 days.
+  - 7‑day high: today’s close equals the highest close of the last 7 days.
+  - Fast MA: 5‑day moving average of closes.
+  - Slow MA: 200‑day moving average of closes.
+- **Entry condition** (for all non‑BuyHold variants):  
+  *Yesterday* was a 7‑day low **and** yesterday’s close was above the 200‑day MA.
+- **Execution**: If entry condition is met at yesterday’s close, we buy at **today’s open**.
+
+### Variants and Their Exit Rules
+
+1. **Strat**  
+   - Exit when today’s close is a 7‑day high.  
+   - Sell at today’s close.
+
+2. **Strat_5ma_stop**  
+   - Exit when today’s close is above the 5‑day MA.  
+   - Sell at today’s close.
+
+3. **Strat_200ma_stop**  
+   - Exit when today’s close is a 7‑day high **or** today’s close is below the 200‑day MA.  
+   - Sell at today’s close (if either condition true).
+
+4. **Strat_0d_hold**  
+   - Exit on the same day as entry (always exit at today’s close).  
+   - (Entry was at open, so this is a very short hold.)
+
+5. **Strat_trail**  
+   - No fixed exit signal; instead a trailing stop is used.  
+   - On the entry day: if close ≤ entry price, exit at close. Otherwise set stop loss = today’s low.  
+   - On subsequent days:  
+     * If open ≤ stop loss → exit at open.  
+     * Else if low ≤ stop loss → exit at stop loss price.  
+     * Else move stop loss to today’s low.  
+   - This creates a trailing stop that follows the daily lows.
+
+6. **BuyHold**  
+   - Simply buy and hold the index. Used as benchmark.
+
+### Pseudocode for Double7 (General Flow)
+
+```
+FOR each day in historical data:
+    # Update indicators
+    fast_ma = average(close, 5)
+    slow_ma = average(close, 200)
+    low_7_today = (close == min(close, 7))
+    high_7_today = (close == max(close, 7))
+
+    # Entry signal for non‑BuyHold variants (checked after market close)
+    IF yesterday was a 7‑day low AND yesterday's close > slow_ma THEN
+        entry_signal_today = TRUE   # we will buy at today's open
+    ELSE
+        entry_signal_today = FALSE
+
+    # Trade simulation (for each variant)
+    IF no position open THEN
+        IF entry_signal_today THEN
+            buy at today's open
+            record entry price and date
+    ELSE (position open)
+        # Determine exit based on variant
+        IF variant == Strat AND high_7_today THEN
+            sell at today's close
+        ELSE IF variant == Strat_5ma_stop AND close > fast_ma THEN
+            sell at today's close
+        ELSE IF variant == Strat_200ma_stop AND (high_7_today OR close < slow_ma) THEN
+            sell at today's close
+        ELSE IF variant == Strat_0d_hold THEN
+            sell at today's close   # always exit same day
+        ELSE IF variant == Strat_trail THEN
+            # trailing stop logic
+            IF first day of trade THEN
+                IF close <= entry_price THEN
+                    sell at close
+                ELSE
+                    stop_loss = low
+            ELSE
+                IF open <= stop_loss THEN
+                    sell at open
+                ELSE IF low <= stop_loss THEN
+                    sell at stop_loss
+                ELSE
+                    stop_loss = low   # raise stop
+        # (if no exit, hold)
+
+    # Update daily portfolio value
+    portfolio_value = cash + (shares * close)
+
+RETURN equity curve and trade list
+```
